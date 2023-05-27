@@ -7,7 +7,14 @@ import com.example.weather.model.WeatherEntity;
 import com.example.weather.repository.WeatherRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.annotation.PostConstruct;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.cache.annotation.CacheConfig;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.ResponseEntity;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
@@ -16,8 +23,9 @@ import java.time.format.DateTimeFormatter;
 import java.util.Optional;
 
 @Service
+@CacheConfig(cacheNames = {"weathers"})
 public class WeatherService {
-
+    private static final Logger logger = LoggerFactory.getLogger(WeatherService.class);
     private final WeatherRepository weatherRepository;
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
@@ -28,7 +36,10 @@ public class WeatherService {
         this.objectMapper = objectMapper;
     }
 
+    @Cacheable(key = "#city")
     public WeatherDto getWeatherByCityName(String city){
+
+        logger.info("Talep edilen şehir : " + city);
         Optional<WeatherEntity> weatherEntityOptional = weatherRepository.findFirstByRequestedCityNameOrderByUpdatedTimeDesc(city);
 
         if(!weatherEntityOptional.isPresent()) {
@@ -45,6 +56,7 @@ public class WeatherService {
         }).orElseGet(() -> WeatherDto.convert(getWeatherFromWeatherStack(city)));
     }
 
+
     private WeatherEntity getWeatherFromWeatherStack(String city){
         ResponseEntity<String> responseEntity = restTemplate.getForEntity(getWeatherStackUrl(city),String.class);
         try {
@@ -54,6 +66,14 @@ public class WeatherService {
             throw new RuntimeException(e);
         }
     }
+
+    @CacheEvict(allEntries = true)
+    @PostConstruct
+    @Scheduled(fixedRateString = "10000")
+    public void clearCache(){
+        logger.info("BÜTÜN CACHE SİLİNDİ");
+    }
+
 
     private String getWeatherStackUrl(String city){
         return Constants.API_URL+Constants.ACCESS_KEY_PARAM+Constants.API_KEY+Constants.QUERY_KEY_PARAM+city;
